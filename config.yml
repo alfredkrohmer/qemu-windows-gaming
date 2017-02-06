@@ -1,0 +1,49 @@
+# Memory size in MiB to allocate for the machine
+# (There needs to be enough free memory to allocate that many huge pages)
+memory: 6144
+
+# The list of CPUs to attach to the VM, QEMU and the rest of the system.
+cpu:
+    system: 0
+    qemu:   1
+    vm:
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+hyperthreading: true
+
+# The disk to attach to the VM.
+disk: /dev/disk/by-id/ata-Crucial_CT525MX300SSD1_1642144E0E85
+
+# Paste here the PCI addresses of your graphics card (and maybe the HDMI
+# Audio Device as well). The key is a name for the device. You must use
+# 'vga' for your graphics card.
+pci_devices:
+    vga:   '0000:01:00.0'
+    audio: '0000:01:00.1'
+
+# Paste here the USB device product IDs you want to attach to the VM.
+usb_devices:
+    mouse:    0x2e22
+    keyboard: 0xc22d
+
+# turns your monitor output off / on to let them switch to the other input
+manage_monitors: true
+
+# The PulseAudio sink to use for audio output.
+audio_sink: alsa_output.pci-0000_00_1b.0.analog-stereo
+
+# Enable MQTT to be able to detach the USB devices again from VM when they
+# are currently attached (i.e., you have no control over your host).
+# (Send '0' or '1' to the given topic in order to detach or attach.)
+# E.g. with the MQTT Dash app for Android.
+mqtt:
+    enable: true
+    broker: 127.0.0.1 
+    topic:  grab
+
+# Extra flags passed directly to the QEMU command line
+qemu_extra_flags: '-redir tcp:2222::22'
