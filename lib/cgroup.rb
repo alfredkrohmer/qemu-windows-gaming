@@ -9,7 +9,7 @@ class CgroupManager
     # pin all threads in the system to their designated core
     File.write(File.join(@cgroup_name, 'cpuset.cpus'), Array(system_core).map(&:to_s).join(','))
     File.write(File.join(@cgroup_name, 'cpuset.mems'), '0')
-    
+
     # move all tasks to that cgroup
     File.read(File.join(@cgroup_path, 'tasks')).chomp.split("\n").each do |pid|
       # this is a kernel thread, don't touch it
@@ -17,8 +17,12 @@ class CgroupManager
 
       # don't move ourselves
       next if pid == $$.to_s
-    
+
       File.write(File.join(@cgroup_name, 'tasks'), pid) rescue Errno::ESRCH
+    end
+
+    at_exit do
+      reset
     end
   end
 

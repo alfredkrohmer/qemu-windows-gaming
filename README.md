@@ -9,7 +9,7 @@ This script allows you to easily start Windows in a VM on Linux with the followi
 
 It also offers the following convenience features:
 * automatically attach USB devices
-* attach / detach USB devices by MQTT (e.g. from a smartphone app)
+* attach / detach USB devices by pressing the power button or by MQTT (e.g. from a smartphone app)
 * turns Linux monitor output on / off to allow the monitors to switch to another source
  
 Configuration

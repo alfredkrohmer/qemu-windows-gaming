@@ -22,19 +22,32 @@ disk: /dev/disk/by-id/ata-Crucial_CT525MX300SSD1_1642144E0E85
 # Audio Device as well). The key is a name for the device. You must use
 # 'vga' for your graphics card.
 pci_devices:
-    vga:   '0000:01:00.0'
-    audio: '0000:01:00.1'
+    vga:       '0000:01:00.0'
+    vga_audio: '0000:01:00.1'
+#    audio:     '0000:00:1b.0'
 
 # Paste here the USB device product IDs you want to attach to the VM.
-usb_devices:
-    mouse:    0x2e22
-    keyboard: 0xc22d
+usb:
+    pre_action:  
+    - sudo systemctl mask g15daemon
+    - sudo systemctl stop g15daemon
+    post_action:
+    - sudo systemctl unmask g15daemon
+    - sudo systemctl start g15daemon
+    devices:
+        mouse:         0x2e22
+        keyboard:      0xc22d
+        xbox_wireless: 0x02e6
+        xbox_wired:    0x02dd
 
 # turns your monitor output off / on to let them switch to the other input
 manage_monitors: true
 
 # The PulseAudio sink to use for audio output.
 audio_sink: alsa_output.pci-0000_00_1b.0.analog-stereo
+
+# Input device to listen on for power button events
+button_device: '/dev/input/event1'
 
 # Enable MQTT to be able to detach the USB devices again from VM when they
 # are currently attached (i.e., you have no control over your host).

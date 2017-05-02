@@ -2,28 +2,51 @@ require 'json'
 require 'socket'
 
 # Communicate with QEMU over the QMP (QEMU Machine Protocol)
-class Qmp 
+class Qmp
+  attr_reader :thread, :shutdown, :suspended
+
   def initialize(socket)
     @s = UNIXSocket.new socket
     @s.readline
     qmp_capabilities
+
+    @shutdown  = false
+    @suspended = false
   end
 
+  # execute the given method in QEMU
   def method_missing(method, args = nil)
     hash = { execute: method.to_s }
     hash[:arguments] = args unless args.nil?
+    puts hash.to_json
     @s.puts(hash.to_json)
-    JSON.parse(@s.readline)['return']
+    resp = @s.readline
+    puts resp.inspect
+    JSON.parse(resp)['return']
   end
   alias :execute :method_missing
 
-  def del_usb(name)
-    puts "Removing USB device '#{name}'"
-    device_del(id: name)
-  end
+  # event processing loop
+  def run
+    loop do
+      event = JSON.parse(@s.readline)
+      puts event.inspect
+      name  = event['event']
+      data  = event['data']
 
-  def add_usb(name, id)
-    puts "Adding USB device '#{name}'"
-    device_add(driver: 'usb-host', productid: id, id: name)
+      case name
+      when 'SUSPEND'
+        puts 'VM suspended'
+        SystemManager.instance.switch_to_host
+        @suspended = true
+      when 'RESUME'
+        puts 'VM resumed'
+        @suspended = false
+      when 'SHUTDOWN'
+        puts 'VM shut down'
+        @shutdown = true
+        Thread.exit
+      end
+    end
   end
 end

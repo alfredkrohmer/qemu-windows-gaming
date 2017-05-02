@@ -3,29 +3,36 @@
 require 'yaml'
 require 'shellwords'
 
+require_relative 'lib/system'
 require_relative 'lib/qmp'
 require_relative 'lib/cgroup'
 require_relative 'lib/pci'
 require_relative 'lib/hugepages'
+require_relative 'lib/usb'
+require_relative 'lib/monitor'
+require_relative 'lib/button'
 require_relative 'lib/mqtt'
+
+Thread.abort_on_exception = true
 
 config = YAML.load(File.read(ARGV[0] || 'config.yml'))
 
-pci = PciManager.new(config['pci_devices'].values)
+PciManager.new(config['pci_devices'].values)
+HugepagesManager.new(config['memory'])
+CgroupManager.new '/sys/fs/cgroup', 'system', config['cpu']['system']
 
-hp = HugepagesManager.new(config['memory'])
-at_exit { hp.reset }
-
-cg = CgroupManager.new '/sys/fs/cgroup', 'system', config['cpu']['system']
-at_exit { cg.reset }
-
+# build whole QEMU launch command
 cmd = [
   %w(taskset -a -c), Array(config['cpu']['qemu']).map(&:to_s).join(','),
 
   'qemu-system-x86_64',
 
+  '-rtc', 'base=localtime,clock=rt',
+
   # QMP remote control
-  %w(-qmp unix:/run/qmp.sock,server,nowait),
+  %w(cmd event misc).map do |type|
+    ['-qmp', "unix:/run/qmp-#{type}.sock,server,nowait"]
+  end,
 
   # basic settings
   %w(-enable-kvm -M q35,accel=kvm -cpu host,kvm=off -vga none),
@@ -69,41 +76,55 @@ if config['qemu_extra_flags']
   end
 end
 
-puts "Starting Qemu: #{cmd.inspect}"
+Array(config['pre_action']).each do |action|
+  puts "pre_action> #{action}"
+  system action
+end
 
+puts "Starting Qemu: #{cmd.inspect}"
 pid = spawn({
   'QEMU_AUDIO_DRV' => 'pa',
-  'QEMU_PA_SINK'   => config['audio_sink']
+  'QEMU_PA_SINK'   => config['audio_sink'],
+  'QEMU_PA_SAMPLES' => '128',
+  'QEMU_AUDIO_DAC_FIXED_SETTINGS' => '1',
+  'QEMU_AUDIO_DAC_FIXED_FREQ' => '44100',
+  'QEMU_AUDIO_DAC_FIXED_FMT' => 'S16',
+  'QEMU_AUDIO_TIMER_PERIOD' => '2000'
 }, *cmd)
+
+# exit script when QEMU finishes
 tid = Thread.start do
   exit Process.wait pid
 end
 
+sm = SystemManager.instance
+
 sleep 1
 
-qmp = Qmp.new '/run/qmp.sock'
-
+# attach to QEMU control & events socket
+qmp = sm.qmp_commands = Qmp.new '/run/qmp-cmd.sock'
 qmp.execute('query-cpus').each do |info|
   `taskset -p -c #{config['cpu']['vm'][info['CPU']]} #{info['thread_id']}`
 end
+qmp_events = sm.qmp_events = Qmp.new('/run/qmp-event.sock')
 
-config['usb_devices'].each(&qmp.method(:add_usb))
+usb = sm.usb = UsbManager.new qmp, qmp_events, config
+mon = sm.mon = MonitorManager.new qmp
 
-if config['manage_monitors']
-  sleep 5
-  `xset dpms force off`
-end
+btn = ButtonManager.new(config['button_device'])
+btn.run
+
+mqtt = sm.mqtt = MqttManager.new(qmp, config)
+mqtt.run
 
 at_exit do
-  qmp.system_powerdown
-  Process.wait pid
+  sm.shutdown
+
+  Array(config['post_action']).each do |action|
+    puts "post_action> #{action}"
+    system action
+  end
 end
 
-if config['mqtt']['enable']
-  mqtt = MqttListener.new(qmp, config['usb_devices'], config['mqtt']['broker'], config['mqtt']['topic'])
-  mqtt.run
-else
-  tid.join
-end
-
-`xset dpms force on` if config['manage_monitors']
+# event loop
+qmp_events.run
